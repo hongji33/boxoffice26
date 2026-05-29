@@ -1,0 +1,6 @@
+{
+  "name": "Daily Box Office",
+  "description": "일일 박스오피스 목록 및 상세 영화 정보를 조회하는 웹사이트입니다. 원하는 날짜를 선택하여 실시간 박스오피스 순위를 감상할 수 있습니다.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

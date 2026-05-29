@@ -1,0 +1,154 @@
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
+
+dotenv.config();
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      "User-Agent": "aistudio-build",
+    },
+  },
+});
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json());
+
+  // API Route - Write Gemini AI Detailed Review
+  app.post("/api/generate-review", async (req, res) => {
+    try {
+      const { movieNm, movieInfo, shortComment } = req.body;
+      if (!movieNm || !shortComment) {
+        return res.status(400).json({ error: "movieNm and shortComment are required properties" });
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "GEMINI_API_KEY environment variable is not configured" });
+      }
+
+      const genres = movieInfo?.genres?.map((g: any) => g.genreNm).join(", ") || "정보 없음";
+      const nations = movieInfo?.nations?.map((n: any) => n.nationNm).join(", ") || "정보 없음";
+      const directors = movieInfo?.directors?.map((d: any) => d.peopleNm).join(", ") || "정보 없음";
+      const actors = movieInfo?.actors?.slice(0, 8).map((a: any) => a.peopleNm).join(", ") || "정보 없음";
+      const prdtYear = movieInfo?.prdtYear || "정보 없음";
+      const showTm = movieInfo?.showTm || "정보 없음";
+
+      const prompt = `당신은 최고의 영화 평론가이자 전문 에디터입니다.
+영화 "${movieNm}"의 상세 정보와 사용자가 입력한 짧은 감상평을 바탕으로, 깊이 있고 몰입감 넘치는 상세 감상평(영화 리뷰)을 한국어로 작성해 주세요.
+
+[영화 정보]
+- 영화 제목: ${movieNm}
+- 제작년도: ${prdtYear}년
+- 상영시간: ${showTm}분
+- 제작 국가: ${nations}
+- 장르: ${genres}
+- 감독: ${directors}
+- 배우: ${actors}
+
+[사용자의 한줄평 / 키워드]
+"${shortComment}"
+
+상세 감상평은 다음의 구성을 갖추어 읽기 쉽고 매력 넘치는 영화 에세이 스타일로 작성해 주십시오:
+1. **매력적인 에세이 제목** (영화의 핵심 톤을 영리하게 관통하는 참신한 제목)
+2. **시선과 분위기** (이 영화가 가진 고유한 개성과 연출 스타일, 배우진들의 연기 인상에 대한 전문적인 분석)
+3. **심층 해석 (감상의 확장)** (사용자가 제공한 한줄평/키워드 "${shortComment}"를 적극적으로 확대 해석하고 가치를 덧붙이며 전하는 리뷰)
+4. **평론가 총평 및 한줄 별점** (예: ★★★★☆ 4.5 / 5.0)
+
+문단마다 줄바꿈을 적절히 사용하여 모바일 및 데스크톱 브라우저에서 읽기 쉽고 세련되게 작성하십시오. 답변에 "네 작성해 드리겠습니다" 같은 불필요한 서론/결문은 모두 빼고 오직 리뷰 본문 마크다운만 바로 출력합니다.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+
+      res.json({ review: response.text });
+    } catch (error: any) {
+      console.error("Error in /api/generate-review:", error);
+      res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
+  });
+
+  // API Route - Box office
+  app.get("/api/boxoffice", async (req, res) => {
+    try {
+      const { targetDt } = req.query;
+      if (!targetDt) {
+        return res.status(400).json({ error: "targetDt query parameter is required" });
+      }
+
+      const apiKey = process.env.KOBIS_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "KOBIS_API_KEY environment variable is not configured" });
+      }
+
+      const url = `http://kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json?key=${apiKey}&targetDt=${targetDt}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch box office list: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("Error in /api/boxoffice:", error);
+      res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
+  });
+
+  // API Route - Movie detail
+  app.get("/api/movieinfo", async (req, res) => {
+    try {
+      const { movieCd } = req.query;
+      if (!movieCd) {
+        return res.status(400).json({ error: "movieCd query parameter is required" });
+      }
+
+      const apiKey = process.env.KOBIS_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "KOBIS_API_KEY environment variable is not configured" });
+      }
+
+      const url = `http://www.kobis.or.kr/kobisopenapi/webservice/rest/movie/searchMovieInfo.json?key=${apiKey}&movieCd=${movieCd}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch movie info: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("Error in /api/movieinfo:", error);
+      res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
