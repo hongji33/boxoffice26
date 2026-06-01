@@ -3,8 +3,11 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const rawApiKey = process.env.GEMINI_API_KEY || "";
+const cleanApiKey = rawApiKey.includes(" ") ? rawApiKey.split(" ")[0].trim() : rawApiKey.trim();
+
 const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
+  apiKey: cleanApiKey,
   httpOptions: {
     headers: {
       "User-Agent": "aistudio-build",
