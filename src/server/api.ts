@@ -4,17 +4,11 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const rawApiKey = process.env.GEMINI_API_KEY || "";
-const cleanApiKey = rawApiKey.includes(" ") ? rawApiKey.split(" ")[0].trim() : rawApiKey.trim();
-
-const ai = new GoogleGenAI({
-  apiKey: cleanApiKey,
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
-});
+const getCleanApiKey = (key: string | undefined): string => {
+  if (!key) return "";
+  const match = key.match(/AIzaSy[a-zA-Z0-9_-]+/);
+  return match ? match[0] : key.trim();
+};
 
 export const apiRouter = express.Router();
 
@@ -29,9 +23,21 @@ apiRouter.post("/generate-review", async (req, res) => {
       return res.status(400).json({ error: "movieNm and shortComment are required properties" });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    const rawApiKey = process.env.GEMINI_API_KEY;
+    const cleanApiKey = getCleanApiKey(rawApiKey);
+
+    if (!cleanApiKey) {
       return res.status(500).json({ error: "GEMINI_API_KEY environment variable is not configured" });
     }
+
+    const ai = new GoogleGenAI({
+      apiKey: cleanApiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
 
     const genres = movieInfo?.genres?.map((g: any) => g.genreNm).join(", ") || "정보 없음";
     const nations = movieInfo?.nations?.map((n: any) => n.nationNm).join(", ") || "정보 없음";
